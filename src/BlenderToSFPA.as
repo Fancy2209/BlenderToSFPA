@@ -12,7 +12,12 @@ package
 	import flash.utils.Dictionary;
 
 	import flash.geom.Matrix;
+
+	import flash.events.Event;
+
 	import flash.net.FileReference;
+	import flash.net.URLLoader;
+	import flash.net.URLRequest;
 
 	import com.codeazur.as3swf.SWF;
 
@@ -42,7 +47,6 @@ package
 	import org.as3commons.bytecode.emit.IPackageBuilder;
 	import org.as3commons.bytecode.emit.IClassBuilder;
 	import org.as3commons.bytecode.emit.ICtorBuilder;
-
 	import org.as3commons.bytecode.emit.impl.AbcBuilder;
 
 	import org.as3commons.bytecode.abc.enum.Opcode;
@@ -51,12 +55,14 @@ package
 	import org.as3commons.bytecode.abc.enum.MultinameKind;
 	import org.as3commons.bytecode.abc.Multiname;
 	import org.as3commons.bytecode.abc.NamespaceSet;
+
 	import org.as3commons.bytecode.io.AbcSerializer;
-	import org.as3commons.bytecode.abc.AbcFile;
-	import flash.display.Loader;
-	import flash.events.Event;
-	import flash.net.URLLoader;
-	import flash.net.URLRequest;
+	import flash.net.LocalConnection;
+	import flash.events.StatusEvent;
+	import flash.filesystem.File;
+	import flash.filesystem.FileStream;
+	import flash.system.Capabilities;
+	import flash.filesystem.FileMode;
 
 	public class BlenderToSFPA extends Sprite
 	{
@@ -64,17 +70,20 @@ package
 		private var props:Dictionary = new Dictionary();
 		private var symbolCache:Dictionary = new Dictionary(true);
 
+		private var sock:SocketHandler;
 		public function BlenderToSFPA()
 		{
 			super();
 			var loader:URLLoader = new URLLoader;
 			loader.dataFormat = "text";
 			var self:BlenderToSFPA = this;
-			loader.addEventListener(Event.COMPLETE, function(e:Event):void
-				{
-					self.makeSWF(makeAllEverything(JSON.parse(loader.data)));
-				});
-			loader.load(new URLRequest("DUMP.json"));
+
+			function callback(o:Object):void
+			{
+				self.makeSWF(self.makeAllEverything(o));
+			}
+
+			sock = new SocketHandler(callback);
 		}
 
 		// generates bytecode equivalent of doing `this[mcName][key] = prop`
@@ -92,9 +101,11 @@ package
 			else if (prop is Number)
 				constructorBuilder.addOpcode(Opcode.pushdouble, [prop]);
 			else if (prop is Boolean)
+			{
 				prop
 					? constructorBuilder.addOpcode(Opcode.pushtrue)
 					: constructorBuilder.addOpcode(Opcode.pushfalse);
+			}
 
 			if (prop is Array)
 			{
@@ -107,9 +118,11 @@ package
 					else if (prop[i] is Number)
 						constructorBuilder.addOpcode(Opcode.pushdouble, [prop[i]]);
 					else if (prop[i] is Boolean)
+					{
 						prop[i]
 							? constructorBuilder.addOpcode(Opcode.pushtrue)
 							: constructorBuilder.addOpcode(Opcode.pushfalse);
+					}
 				}
 				constructorBuilder.addOpcode(Opcode.newarray, [prop["length"]]);
 			}
@@ -189,7 +202,25 @@ package
 
 			var out:ByteArray = new ByteArray();
 			swf.publish(out);
-			new FileReference().save(out, "SWF.swf");
+			if (Capabilities.playerType == "Desktop")
+			{
+				var stream:FileStream = new FileStream();
+				stream.open(new File(File.applicationDirectory.resolvePath("Custom0.swf").nativePath), FileMode.WRITE);
+				stream.writeBytes(out);
+				stream.close();
+				var lcSend:LocalConnection = new LocalConnection();
+				lcSend.addEventListener(StatusEvent.STATUS,
+						function(e:StatusEvent):void
+						{
+							trace("status", e.level);
+						}
+					);
+				lcSend.send("app#com.bornegames.FPAWorld4:GameHotline", "RefreshLevel");
+			}
+			else
+			{
+				new FileReference().save(out, "Custom0.swf");
+			}
 			trace("SWF Writen!");
 		}
 
@@ -201,18 +232,16 @@ package
 			{
 				var mc:MovieClip = allEverything.getChildByName(classesWithAsFiles[i]) as MovieClip;
 				if (mc == null)
-				{
 					continue;
-				}
 				trace("generateAS3", i, mc.name);
 				mcsWithClasses.push(mc);
 				var key:String;
 				var classBuilder:IClassBuilder = packageBuilder.defineClass(mc.name);
 				classBuilder.superClassName = "flash.display.MovieClip";
 				classBuilder.isDynamic = true;
-				for (i = 0; i < mc.numChildren; i++)
+				for (var j:int = 0; j < mc.numChildren; j++)
 				{
-					var currChild:MovieClip = mc.getChildAt(i) as MovieClip;
+					var currChild:MovieClip = mc.getChildAt(j) as MovieClip;
 					if (currChild.name && currChild.name.length > 0)
 					{
 						classBuilder.defineProperty(currChild.name, "flash.display.MovieClip");
@@ -225,9 +254,9 @@ package
 				constructorBuilder.addOpcode(Opcode.getlocal_0);
 				constructorBuilder.addOpcode(Opcode.constructsuper, [0]);
 
-				for (i = 0; i < mc.numChildren; i++)
+				for (var k:int = 0; k < mc.numChildren; k++)
 				{
-					currChild = mc.getChildAt(i) as MovieClip;
+					currChild = mc.getChildAt(k) as MovieClip;
 					for (key in props[currChild.name])
 					{
 						setProperty(constructorBuilder, currChild.name, key, props[currChild.name][key]);
@@ -362,9 +391,6 @@ package
 			}
 			tagSprite.tags.push(new TagShowFrame());
 
-			// trace(mc.name);
-			// trace(tagSprite);
-			// trace(children);
 			symbolCache[mc] = tagSprite;
 			return tagSprite;
 		}
@@ -411,7 +437,6 @@ package
 				}
 				else
 				{
-
 					for (var i:uint = 0; i < currObj['shapes']['length']; i++)
 					{
 						var moveTo:Boolean = true;
@@ -431,7 +456,6 @@ package
 							}
 						}
 						container.graphics.endFill();
-
 					}
 
 					container.x = currObj["x"];
@@ -449,8 +473,68 @@ package
 			props[allEverything.name] = new Object();
 			props[allEverything.name].backgroundZs = [0];
 			props[allEverything.name].LevelStatus = "Normal";
-			stage.addChild(allEverything);
 			return allEverything;
 		}
+	}
+}
+
+import flash.net.ServerSocket;
+import flash.events.ServerSocketConnectEvent;
+import flash.events.Event;
+import flash.net.Socket;
+import flash.events.ProgressEvent;
+class SocketHandler
+{
+
+	[Inline]
+	private static const ADDRESS:String = "127.0.0.1";
+
+	[Inline]
+	private static const PORT:int = 31416;
+
+	private var serverSocket:ServerSocket;
+	private var clientSocket:Socket;
+	private var callback:Function;
+
+	public function SocketHandler(callback:Function, port:int = PORT, address:String = ADDRESS)
+	{
+		super();
+		this.callback = callback;
+		serverSocket = new ServerSocket();
+
+		serverSocket.addEventListener(ServerSocketConnectEvent.CONNECT, this.onServerConnect);
+		serverSocket.addEventListener(Event.CLOSE, this.onServerClose);
+
+		serverSocket.bind(port, address);
+		serverSocket.listen();
+	}
+
+	private function onServerConnect(e:ServerSocketConnectEvent):void
+	{
+		clientSocket = e.socket;
+		clientSocket.addEventListener(ProgressEvent.SOCKET_DATA, onClientSocketData);
+		trace("Connection from " + clientSocket.remoteAddress + ":" + clientSocket.remotePort);
+	}
+
+	private var jsonLength:uint = 0;
+	private function onClientSocketData(event:ProgressEvent):void
+	{
+		if (jsonLength == 0 && clientSocket.bytesAvailable >= 4)
+		{
+			jsonLength = clientSocket.readUnsignedInt();
+			trace(jsonLength, clientSocket.bytesAvailable);
+		}
+		if (clientSocket.bytesAvailable >= jsonLength)
+		{
+			var msg:String = clientSocket.readUTFBytes(jsonLength);
+			trace(msg);
+			this.callback(JSON.parse(msg));
+			jsonLength = 0;
+		}
+	}
+
+	private function onServerClose(e:Event):void
+	{
+		trace("SocketHandler dying");
 	}
 }

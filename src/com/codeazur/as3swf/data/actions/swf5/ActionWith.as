@@ -56,14 +56,14 @@
 		
 		override public function toBytecode(indent:uint, context:ActionExecutionContext):String {
 			var str:String = toBytecodeLabel(indent) + "with {"; 
-			var context:ActionExecutionContext = new ActionExecutionContext(withBody, context.cpool.concat(), labelCount);
+			var _context:ActionExecutionContext = new ActionExecutionContext(withBody, context.cpool.concat(), labelCount);
 			for (var i:uint = 0; i < withBody.length; i++) {
 				if(withBody[i]) {
-					str += "\n" + StringUtils.repeat(indent + 4) + withBody[i].toBytecode(indent + 4, context);
+					str += "\n" + StringUtils.repeat(indent + 4) + withBody[i].toBytecode(indent + 4, _context);
 				}
 			}
-			if(context.endLabel != null) {
-				str += "\n" + StringUtils.repeat(indent + 4) + context.endLabel + ":";
+			if(_context.endLabel != null) {
+				str += "\n" + StringUtils.repeat(indent + 4) + _context.endLabel + ":";
 			}
 			str += "\n" + StringUtils.repeat(indent + 2) + "}";
 			return str;

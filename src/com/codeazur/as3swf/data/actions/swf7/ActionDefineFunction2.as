@@ -158,14 +158,14 @@
 			if (suppress.length > 0) {
 				str += "\n" + StringUtils.repeat(indent + 4) + "// suppress: " + suppress.join(", ");
 			}
-			var context:ActionExecutionContext = new ActionExecutionContext(functionBody, context.cpool.concat(), labelCount);
+			var _context:ActionExecutionContext = new ActionExecutionContext(functionBody, context.cpool.concat(), labelCount);
 			for (var i:uint = 0; i < functionBody.length; i++) {
 				if(functionBody[i]) {
-					str += "\n" + StringUtils.repeat(indent + 4) + functionBody[i].toBytecode(indent + 4, context);
+					str += "\n" + StringUtils.repeat(indent + 4) + functionBody[i].toBytecode(indent + 4, _context);
 				}
 			}
-			if(context.endLabel != null) {
-				str += "\n" + StringUtils.repeat(indent + 4) + context.endLabel + ":";
+			if(_context.endLabel != null) {
+				str += "\n" + StringUtils.repeat(indent + 4) + _context.endLabel + ":";
 			}
 			str += "\n" + StringUtils.repeat(indent + 2) + "}";
 			return str;

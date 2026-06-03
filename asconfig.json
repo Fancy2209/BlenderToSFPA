@@ -1,0 +1,19 @@
+{
+	"config": "air",
+	"compilerOptions": 
+    {
+		"source-path": [
+			"src"
+		],
+		"library-path": [
+			"libs"
+		],
+		"output": "bin/BlenderToSFPA.swf"
+	},
+	"application": "src/BlenderToSFPA-app.xml",
+	"mainClass": "BlenderToSFPA",
+	"additionalOptions": [
+		"-compiler.float=false",
+		"-swf-version=37"
+	]
+}
